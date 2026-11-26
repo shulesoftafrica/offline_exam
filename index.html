@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Sit ShuleSoft online exams in a computer lab with the internet switched off; answers sync when it comes back."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>ShuleSoft Exams</title>
+    <style>
+      /* First-paint styles, inline so the shell is readable before any CSS file loads. */
+      html { background: #f8fafc; color-scheme: light dark; }
+      @media (prefers-color-scheme: dark) { html { background: #0b1220; } }
+      #boot {
+        position: fixed; inset: 0; display: grid; place-items: center;
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"><div id="boot">Loading the exam app…</div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

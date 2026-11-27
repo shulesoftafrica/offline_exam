@@ -249,6 +249,12 @@ git-ignored `.env.local` and `.env.production.local` already hold on this machin
 
 ## Deploying this to `ai.shulesoft.africa`
 
+> **Done — live since 27 November 2026.** Pulled onto `hz-hel1`, the offline-mode migration
+> ran (batch 135), caches cleared, php8.4-fpm reloaded. `/api/health` answers 200 with the
+> app's origin echoed, the login preflight answers 204 with `idempotency-key` allowed, and a
+> wrong password gets a clean 401 rather than a 302 into the installer. The full runbook,
+> both sides, is [`../docs/DEPLOY_LIVE.md`](../docs/DEPLOY_LIVE.md).
+
 Nothing host-specific is compiled in, so a deployment is the ordinary one plus two checks:
 
 1. Run the offline-mode migration there — by path, as below, if that database also has

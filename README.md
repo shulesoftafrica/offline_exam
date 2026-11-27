@@ -157,27 +157,22 @@ tests drive the real `ExamService` against the mock backend.
   key is sent
 * `test/labFlow.test.ts` — the lab day end to end, including a power cut mid-exam
 
-## Deploying to `exam.shulesoft.africa`
+## Deployed
 
-1. `npm run build` → `dist/`.
-2. Serve `dist/` over **HTTPS** (service workers and OPFS need a secure context; `localhost`
-   is exempt for development). Any static host or an Apache/Nginx vhost will do.
-3. SPA fallback: every unknown path serves `index.html`.
+**Live since 27 November 2026**: the app at `https://exam.shulesoft.africa`, the API at
+`https://ai.shulesoft.africa/api`, both on `hz-hel1` behind Cloudflare. The app has its own
+nginx vhost (`/usr/share/nginx/html/exam_shulesoft`); the API is the usual
+`shulesoft_staging` checkout on `ai_upgrades`.
 
-   ```apache
-   <Directory "/var/www/exam.shulesoft.africa">
-       FallbackResource /index.html
-   </Directory>
-   ```
-4. Never cache `index.html` or `sw.js` (`Cache-Control: no-cache`); the hashed assets under
-   `/assets/` can be cached for a year.
-5. The API is `https://ai.shulesoft.africa` (already in `.env.production`), so this app's
-   origin has to be in that host's CORS allow-list with `Idempotency-Key` in
-   `allowed_headers`. `config/cors.php` there lists `https://exam.shulesoft.africa`
-   already; a different hostname goes in `CORS_ALLOWED_ORIGINS` in the API's `.env` as a
-   comma-separated list. See [`backend-proposal/README.md`](backend-proposal/README.md).
-6. On each lab machine: open the app once while online, sign in, and let it install. Use the
-   same browser profile for every shift — the exam data lives in that profile.
+[`docs/DEPLOY_LIVE.md`](docs/DEPLOY_LIVE.md) is the deployment runbook — what runs where, how
+to push an update to either side, how to check it is really up, and **the one Cloudflare
+cache rule still outstanding**: the edge overrides the origin's `no-cache` on `/sw.js` with a
+four-hour TTL, so until somebody with a Cloudflare login changes it, a new deployment can
+take up to four hours to reach a machine that already has the app installed. Nothing else is
+affected by it.
+
+On each lab machine: open the app once while online, sign in, and let it install. Use the
+same browser profile for every shift — the exam data lives in that profile.
 
 Updates use **prompt** mode on purpose: a new deployment never reloads a machine that has an
 exam in progress. The app offers the update only when nothing is running.

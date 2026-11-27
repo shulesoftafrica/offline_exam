@@ -46,6 +46,14 @@ export interface QuestionOption {
   text: string;
 }
 
+/**
+ * How a written answer should be typed in. The server derives it from `questions.type`
+ * (4 = true/false, 5 = short answer, 7 = essay — the map lives in `AIController`), and it
+ * changes the input the student gets, never how the answer is marked: all of these are
+ * `kind: 'written'` and go through `ExamGrader`'s written path exactly as before.
+ */
+export type QuestionInputHint = 'boolean' | 'short_text' | 'long_text';
+
 export interface Question {
   questionId: number;
   /** Display number; may be `"4a"` for a part of a structured question. */
@@ -61,6 +69,8 @@ export interface Question {
   groupRef: string | null;
   /** `(a)`, `(b)`, … within a structured group. */
   partLabel: string | null;
+  /** Written questions only: which input to show. `null` is a plain answer box. */
+  inputHint: QuestionInputHint | null;
 }
 
 /** A structured question is a run of sibling questions grouped for display only. */

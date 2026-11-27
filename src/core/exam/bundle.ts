@@ -42,12 +42,22 @@ export interface BundleResult {
   attempt: AttemptRecord;
 }
 
-/** Checksum over exactly what both sides can agree on: exam metadata + questions. */
+/**
+ * Checksum over exactly what both sides can agree on: exam metadata + questions.
+ *
+ * `source` is the untouched `{ exam, questions }` the server sent when the driver kept it
+ * (`BundleResponse.checksumSource`). That matters: the server digests its own payload, in
+ * its own key names, so hashing our mapped camel-cased objects instead would disagree with
+ * it on every single bundle. Without a source — the mock driver — the mapped payload is
+ * hashed, which is what the mock itself signs.
+ */
 export async function computeBundleChecksum(
   exam: BundleResponse['exam'],
   questions: Question[],
+  source?: unknown,
 ): Promise<string> {
-  return `sha256:${await sha256OfString(canonicalJson({ exam, questions }))}`;
+  const payload = source === undefined ? { exam, questions } : source;
+  return `sha256:${await sha256OfString(canonicalJson(payload))}`;
 }
 
 export interface BundleVerification {
@@ -71,7 +81,11 @@ export async function verifyBundlePayload(response: BundleResponse): Promise<Bun
     problems.push('The exam has no questions.');
   }
 
-  const recomputed = await computeBundleChecksum(response.exam, response.questions);
+  const recomputed = await computeBundleChecksum(
+    response.exam,
+    response.questions,
+    response.checksumSource,
+  );
   const checksumMatches =
     response.bundleChecksum === '' || recomputed === response.bundleChecksum;
   if (!checksumMatches) {

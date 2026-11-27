@@ -4,6 +4,7 @@ import type {
   ExamMeta,
   MediaRef,
   Question,
+  QuestionInputHint,
   ServerAttempt,
   StudentProfile,
 } from '../../types';
@@ -258,6 +259,8 @@ export class LaravelExamApi implements ExamApi {
       attachmentRules: toAttachmentRules(data['attachment_rules']),
       bundleChecksum: str(data['bundle_checksum']),
       issuedAt: str(data['issued_at'], new Date().toISOString()),
+      // Verified as sent, not as mapped: the server hashes its own snake_case payload.
+      checksumSource: { exam: data['exam'] ?? null, questions: data['questions'] ?? [] },
     };
   }
 
@@ -517,7 +520,13 @@ function toQuestion(raw: Json): Question {
     maxChars: raw['max_chars'] == null ? null : num(raw['max_chars']),
     groupRef: nullableStr(raw['group_ref']),
     partLabel: nullableStr(raw['part_label']),
+    inputHint: toInputHint(raw['input_hint']),
   };
+}
+
+function toInputHint(raw: unknown): QuestionInputHint | null {
+  const hint = typeof raw === 'string' ? raw : '';
+  return hint === 'boolean' || hint === 'short_text' || hint === 'long_text' ? hint : null;
 }
 
 function toMediaRef(raw: Json): MediaRef {

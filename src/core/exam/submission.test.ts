@@ -48,6 +48,7 @@ function question(partial: Partial<Question> & { questionId: number; number: str
     imageUrl: null,
     options: [],
     maxChars: null,
+    inputHint: null,
     groupRef: null,
     partLabel: null,
     ...partial,

@@ -74,6 +74,14 @@ export interface BundleResponse {
   attachmentRules: AttachmentRules;
   bundleChecksum: string;
   issuedAt: string;
+  /**
+   * The exact `{ exam, questions }` the server sent, before any mapping into the types
+   * above. `bundleChecksum` is a digest of *that*, in the server's own key names, so
+   * verification has to canonicalise what came off the wire rather than our camel-cased
+   * view of it. A driver with no wire format of its own (the mock) leaves this undefined
+   * and the checksum is recomputed over the mapped payload instead.
+   */
+  checksumSource?: unknown;
 }
 
 export interface SubmissionAnswerPayload {

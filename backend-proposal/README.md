@@ -100,7 +100,7 @@ changed. `student_login.php` sets a password on one borrowed student (and one te
 check the credential path; that write is rolled back with everything else and the script
 prints whether its password still works afterwards — it must say `no`. A failed sign-in does
 leave its row in `shulesoft.login_attempts`, exactly as a mistyped password does, because
-that insert is the behaviour under test. 58 checks on the exam cycle and 19 on sign-in, all passing: sign-in against the real
+that insert is the behaviour under test. 59 checks on the exam cycle and 19 on sign-in, all passing: sign-in against the real
 `users` view (a teacher's credentials are refused with 403), the bundle with no answer key in
 it, answers into `student_assessment`, a digest-named attachment on disk, `finalize` refusing
 an attempt whose declared file never arrived, marking through `finalizeAttempt()` scoring
@@ -109,10 +109,35 @@ with the same idempotency key changing nothing, another student's token getting 
 attempt, and `closeExpired()` leaving an unsynced offline attempt alone while still closing an
 ordinary online one.
 
-The PWA itself was then pointed at this API (`offline_exams/.env.local`) and driven in a
-browser: the preflight passes, `/api/health` returns 200, and a wrong password shows the
-server's own "Wrong username or password" in the app. A **successful** browser sign-in was
-not performed — it needs a student's real password, which only the school has.
+The PWA was then pointed at this API (`offline_exams/.env.local`) and a real student sat a
+real exam in a browser, end to end: sign in, download, answer, reload mid-exam, submit with
+the API unreachable, and sync. `lufadahighschool` exam 10285838, attempt 7 — five of ten
+true/false questions answered, four right, and `minor_exam_marks.mark` came out 40 with
+`student_assessment` holding the five answers and `synced_at` set on the attempt.
+
+### What that first live run broke, and what was changed
+
+Two things that no test against the mock backend could have caught, because the mock has no
+wire format of its own:
+
+**1. No exam could be downloaded at all.** `canonical()` wrote an empty array as `{}` —
+`range(0, -1)` is `[0, -1]`, so `[]` failed the is-this-a-list test — while `json_encode()`
+had put `[]` on the wire. Every bundle with a written question therefore carried a
+`bundle_checksum` no browser could reproduce, and the PWA refused to start the exam with
+"the exam download is incomplete or was altered in transit". Fixed here; the client was also
+hashing its own camel-cased mapping rather than the response as sent, which was fixed on
+that side. Both now have a test holding the same constant, and the cycle harness recomputes
+the digest with an independent implementation instead of only checking that it starts with
+`sha256:`.
+
+**2. True/false questions were shown as empty text boxes.** `questions.type` carries more
+than the three kinds the web module's own form creates: the AI exam generator writes 4
+true/false, 5 short answer, 6 matching and 7 essay (`AIController::$typeMapping`), each with
+a single model answer in `valid_answers`, so `ExamGrader::kind()` correctly calls them all
+`written`. Marking is unchanged, but a student should not have to guess whether the marker
+wants "True", "T" or "yes". The bundle now carries an `input_hint` per question and the PWA
+renders True/False buttons for type 4. The answer key is not exposed: both labels go out for
+every true/false question and `valid_answers.status` stays on the server.
 
 ## The one schema change
 
@@ -148,9 +173,12 @@ The generous `ends_at` this controller writes for an offline attempt
 (`duration + OFFLINE_WINDOW_HOURS`) is a second belt for the same problem: even without the
 filter, a morning sitting synced the same afternoon still lands inside its window.
 
-**2. CORS for the exam subdomain.** `config/cors.php` did not exist in this repository and
-`HandleCors` was not in the middleware stack, so the file was written and the middleware
-registered — see [what was applied](#what-was-applied). What it holds:
+**2. CORS for the exam subdomain.** Live, the PWA is served from
+`https://exam.shulesoft.africa` and calls this API on `https://ai.shulesoft.africa` — the
+same host the Virtual Accountant and Jitsi modules already use — so every call is
+cross-origin. `config/cors.php` did not exist in this repository and `HandleCors` was not
+in the middleware stack, so the file was written and the middleware registered — see
+[what was applied](#what-was-applied). What it holds:
 
 ```php
 'paths' => ['api/*'],
@@ -216,7 +244,25 @@ curl -s -X POST http://localhost/shulesoft_newversion/api/student/exams/91/bundl
 ```
 
 Then point the PWA at it: `VITE_API_DRIVER=laravel`,
-`VITE_API_BASE_URL=http://localhost/shulesoft_newversion/api`.
+`VITE_API_BASE_URL=http://localhost/shulesoft_newversion/api` (that is what the PWA's
+git-ignored `.env.local` and `.env.production.local` already hold on this machine).
+
+## Deploying this to `ai.shulesoft.africa`
+
+Nothing host-specific is compiled in, so a deployment is the ordinary one plus two checks:
+
+1. Run the offline-mode migration there — by path, as below, if that database also has
+   unrelated pending migrations.
+2. Confirm the PWA's origin is answered: `CORS_ALLOWED_ORIGINS` in `.env` if the app is not
+   on `https://exam.shulesoft.africa`, otherwise the committed default already covers it.
+
+```powershell
+curl -s -i -X OPTIONS https://ai.shulesoft.africa/api/student/login -H "Origin: https://exam.shulesoft.africa" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type,idempotency-key"
+```
+
+A `204` with `access-control-allow-origin` echoing the app's origin means the browser will
+be allowed to make the call; a `200` HTML page or a `302` to `/install/index` means
+`HandleCors` or the `isStudentExamApiPath()` bypass did not make it into that deployment.
 
 ## What is deliberately *not* here
 

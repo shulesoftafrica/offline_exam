@@ -6,8 +6,11 @@ existing table, column, route or response changes. It is **applied** in
 side, the list of every file touched there and what was verified against the real database
 are in [`../backend-proposal/`](../backend-proposal/README.md).
 
-Base URL: `VITE_API_BASE_URL`, default `https://exam.shulesoft.africa/api` (dev:
-`http://localhost/shulesoft_newversion/api`).
+Base URL: `VITE_API_BASE_URL`. Live it is **`https://ai.shulesoft.africa/api`** — the
+Laravel host the parent experience apps already call — while the PWA itself is served from
+`https://exam.shulesoft.africa`, which is why CORS matters (§3.1). Locally it is
+`http://localhost/shulesoft_newversion/api`. Both values are committed:
+`.env.production` and `.env.production.local` respectively.
 
 ## 0. What already exists and is reused unchanged
 
@@ -124,7 +127,9 @@ Header: `Idempotency-Key: bundle:{student_id}:{exam_id}` (a second tap returns t
       "group_ref": null, "part_label": null,
       "options": [{ "option_id": 55012, "text": "0.5 m/s" }] },
     { "question_id": 7782, "number": 2, "kind": "written", "weight": 5,
-      "text": "Explain…", "max_chars": 4000, "options": [] },
+      "text": "Explain…", "max_chars": 4000, "input_hint": null, "options": [] },
+    { "question_id": 7785, "number": 5, "kind": "written", "weight": 1,
+      "text": "A ship made of steel floats.", "input_hint": "boolean", "options": [] },
     { "question_id": 7783, "number": 3, "kind": "upload", "weight": 10,
       "text": "Photograph your graph and attach it.", "options": [] },
     { "question_id": 7784, "number": "4a", "kind": "written", "weight": 3,
@@ -141,6 +146,33 @@ messages the parent app already returns.
 
 > **Completeness:** the client recomputes `bundle_checksum` over the canonical payload and
 > refuses to start an exam if it disagrees or if any `media` item failed to download.
+
+**What exactly is hashed**, because getting this wrong stops every exam: the canonical form
+of `{"exam": …, "questions": […]}` **as it appears in this response** — the server's own key
+names, the array order as sent — not the client's mapping of it. Canonical means keys sorted
+by byte value, no whitespace, nulls kept, and an empty array written `[]` (never `{}`; PHP
+cannot tell the two apart, which is exactly how the first version of this signed a digest no
+browser could reproduce). The two implementations are
+`src/core/util/checksum.ts#canonicalJson` and `OfflineExamController::canonical()`, and they
+are pinned to each other by a shared constant in `src/core/api/laravel.test.ts` and
+`tests/Unit/OnlineExam/OfflineBundleChecksumTest.php`.
+
+### `input_hint`
+
+`kind` is what the backend **marks** (`ExamGrader::kind()`: `choice`, `written`, `upload`).
+`input_hint` is only what the student **types into**, derived from `questions.type`, and is
+present on written questions alone:
+
+| `input_hint` | `questions.type` | What the student gets |
+|---|---|---|
+| `"boolean"` | 4 — true/false | True / False buttons; the word is stored as the answer text |
+| `"short_text"` | 5 — short answer | a two-line box |
+| `"long_text"` | 7 — essay | a twelve-line box |
+| `null` | anything else | the ordinary answer box |
+
+Nothing here reveals the answer: for a true/false question both labels are sent for every
+one of them, and which is right stays in `valid_answers.status`, server-side. A client that
+ignores `input_hint` still works — it shows a plain box, which is what happened before.
 
 ### `POST /api/student/attempts/{attemptId}/submission`  (stage 0)
 Header: `Idempotency-Key: attempt:{attempt_id}:{submission_uuid}`
@@ -215,6 +247,17 @@ Proctor view / post-sync reconciliation.
 Idempotency keys are stable across process restarts because they are derived from
 server-issued ids (`attempt_id`, `submission_uuid`) and content digests — never from a
 random value generated at send time.
+
+### 3.1 Cross-origin
+
+The app and the API are different hosts (`exam.shulesoft.africa` → `ai.shulesoft.africa`),
+so every call is cross-origin and a write is preceded by a preflight `OPTIONS`. The API
+side of that is applied: `config/cors.php` with `paths: ['api/*']`, the app's origin in
+`allowed_origins` (overridable with `CORS_ALLOWED_ORIGINS`), `Idempotency-Key` in
+`allowed_headers`, and `HandleCors` in the **global** middleware stack, because a preflight
+never reaches the router. `supports_credentials` stays false: the client authenticates with
+a Sanctum bearer token out of IndexedDB, never a cookie, so the API host needs no shared
+session domain with the app.
 
 ## 4. Dev mode without the backend
 

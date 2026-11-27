@@ -34,6 +34,7 @@ function question(id: number, kind: Question['kind'] = 'written'): Question {
     maxChars: 1000,
     groupRef: null,
     partLabel: null,
+    inputHint: null,
   };
 }
 

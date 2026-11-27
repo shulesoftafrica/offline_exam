@@ -46,6 +46,39 @@ function check(string $what, bool $ok, string $detail = ''): void
     say(sprintf('  %s %s%s', $ok ? '[ok]  ' : '[FAIL]', $what, $detail !== '' ? '  — ' . $detail : ''));
 }
 
+/**
+ * Canonical JSON as the PWA computes it (`src/core/util/checksum.ts#canonicalJson`): keys
+ * sorted, no whitespace, nulls kept, and — the part that matters — an empty array written
+ * as `[]`, because that is what a JSON parser in a browser sees. Deliberately a separate
+ * implementation from the controller's, so that this checks agreement rather than itself.
+ */
+function browser_canonical($value): string
+{
+    if (is_array($value)) {
+        if ($value === [] || array_keys($value) === range(0, count($value) - 1)) {
+            return '[' . implode(',', array_map('browser_canonical', $value)) . ']';
+        }
+        ksort($value, SORT_STRING);
+        $parts = [];
+        foreach ($value as $k => $v) {
+            $parts[] = json_encode((string) $k, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ':' . browser_canonical($v);
+        }
+
+        return '{' . implode(',', $parts) . '}';
+    }
+    if (is_bool($value)) {
+        return $value ? 'true' : 'false';
+    }
+    if ($value === null) {
+        return 'null';
+    }
+    if (is_int($value) || is_float($value)) {
+        return json_encode($value + 0);
+    }
+
+    return json_encode((string) $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
 /** One API call through the whole stack. @return array{0:int,1:array} */
 function call(string $method, string $uri, array $body = [], array $headers = [], array $files = []): array
 {
@@ -158,6 +191,21 @@ try {
     check('the upload question is marked upload', count($uploads) === 1);
     check('attachment rules are sent', ($data['attachment_rules']['enabled'] ?? false) === true);
     check('a bundle checksum is sent', str_starts_with((string) ($data['bundle_checksum'] ?? ''), 'sha256:'));
+    // And that it is a digest the browser can actually reproduce. `browser_canonical()` is a
+    // second, independent implementation of the PWA's canonical JSON, run over the decoded
+    // response body — exactly what the client has to work from, offline, with no way to ask.
+    // A checksum that merely looks like a checksum is worth nothing: the first version of
+    // this signed `"options": []` as `{}` and no exam with a written question could be
+    // started at all.
+    $reproduced = 'sha256:' . hash('sha256', browser_canonical([
+        'exam' => $data['exam'] ?? null,
+        'questions' => $questions,
+    ]));
+    check(
+        'the checksum is reproducible from the response body',
+        $reproduced === ($data['bundle_checksum'] ?? ''),
+        'server=' . substr((string) ($data['bundle_checksum'] ?? ''), 0, 22) . '… browser=' . substr($reproduced, 0, 22) . '…'
+    );
     // The one property the whole design rests on: the key stays on the server.
     $keyLeaked = false;
     foreach ($questions as $q) {

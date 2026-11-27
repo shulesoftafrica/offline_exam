@@ -654,6 +654,7 @@ class OfflineExamController extends Controller
                 'max_chars' => $kind === ExamGrader::WRITTEN ? 4000 : null,
                 'group_ref' => $hasGroups ? ($row->group_ref ?: null) : null,
                 'part_label' => $hasGroups ? ($row->part_label ?: null) : null,
+                'input_hint' => $this->inputHint((int) ($row->type ?? 0), $kind),
                 // The answer key never leaves the server: only ids and texts go out.
                 'options' => $kind === ExamGrader::CHOICE
                     ? array_map(fn($o) => ['option_id' => $o['id'], 'text' => ExamGrader::plain($o['answer'])], $opts)
@@ -666,6 +667,34 @@ class OfflineExamController extends Controller
         }
 
         return [$questions, $media, $totalWeight];
+    }
+
+    /**
+     * Which input the student should be given for a written answer. `questions.type` carries
+     * more than the three kinds the web module's own form can create (1 multiple choice,
+     * 2 fill-in-the-blanks, 3 attach a picture): the AI exam generator also writes 4
+     * true/false, 5 short answer, 6 matching and 7 essay — the map is in
+     * `AIController::$typeMapping`.
+     *
+     * `ExamGrader::kind()` calls all of those `written`, because each stores one model answer
+     * in `valid_answers` and is marked by comparing text. That is left exactly as it is: this
+     * is only a hint about the input, so a true/false question gets True/False buttons
+     * instead of an empty box a student has to guess the wording for. Nothing here reveals
+     * the answer — both labels are sent for every one of them, and which is right stays in
+     * `valid_answers.status`, server-side.
+     */
+    private function inputHint(int $type, string $kind): ?string
+    {
+        if ($kind !== ExamGrader::WRITTEN) {
+            return null;
+        }
+
+        return match ($type) {
+            4 => 'boolean',
+            5 => 'short_text',
+            7 => 'long_text',
+            default => null,
+        };
     }
 
     /** A picture on a question: a full link (S3) or a file of this server; images only. */
@@ -714,7 +743,13 @@ class OfflineExamController extends Controller
     private function canonical($value): string
     {
         if (is_array($value)) {
-            $isList = array_keys($value) === range(0, count($value) - 1);
+            // An empty PHP array is ambiguous — it is both [] and {} — and `range(0, -1)`
+            // is [0, -1], so the plain check below calls it an object and writes `{}`.
+            // json_encode() puts `[]` on the wire for it, and that is what a client parsing
+            // the response sees and hashes, so an empty array is a list here too. Without
+            // this, every bundle holding a written question (`"options": []`) is signed with
+            // a digest no client can reproduce.
+            $isList = $value === [] || array_keys($value) === range(0, count($value) - 1);
             if ($isList) {
                 return '[' . implode(',', array_map(fn($v) => $this->canonical($v), $value)) . ']';
             }

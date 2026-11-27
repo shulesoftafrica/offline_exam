@@ -109,7 +109,17 @@ function SingleQuestion({
         />
       ) : null}
 
-      {question.kind === 'written' ? (
+      {question.kind === 'written' && question.inputHint === 'boolean' ? (
+        <BooleanInput
+          attemptKey={attemptKey}
+          question={question}
+          answer={answer}
+          locked={locked}
+          onAnswerChanged={onAnswerChanged}
+        />
+      ) : null}
+
+      {question.kind === 'written' && question.inputHint !== 'boolean' ? (
         <WrittenInput
           attemptKey={attemptKey}
           question={question}
@@ -194,6 +204,79 @@ function ChoiceInput({
   );
 }
 
+// ── True / False ────────────────────────────────────────────────────────────
+
+/**
+ * A true/false question (`questions.type = 4`) is marked as a written answer by the
+ * backend — one model answer in `valid_answers`, compared as text — so this stores the
+ * word, not an option id. The two buttons exist because a student should not have to guess
+ * whether the marker wants "True", "T" or "yes", and because tapping is faster and less
+ * error-prone than typing on a shared lab keyboard.
+ */
+const BOOLEAN_CHOICES = ['True', 'False'] as const;
+
+function BooleanInput({
+  attemptKey,
+  question,
+  answer,
+  locked,
+  onAnswerChanged,
+}: {
+  attemptKey: AttemptKey;
+  question: Question;
+  answer: AnswerRecord | null;
+  locked: boolean;
+  onAnswerChanged: () => void;
+}): JSX.Element {
+  const service = useService();
+  const [saving, setSaving] = useState(false);
+  const selected = (answer?.text ?? '').trim().toLowerCase();
+
+  const choose = useCallback(
+    async (value: string) => {
+      setSaving(true);
+      await service.saveText(attemptKey, question.questionId, value);
+      setSaving(false);
+      onAnswerChanged();
+    },
+    [attemptKey, onAnswerChanged, question.questionId, service],
+  );
+
+  return (
+    <>
+      <div
+        className="options"
+        role="radiogroup"
+        aria-label={`Answer for question ${question.number}`}
+      >
+        {BOOLEAN_CHOICES.map((choice) => (
+          <label className="option" key={choice}>
+            <input
+              type="radio"
+              name={`q-${question.questionId}`}
+              value={choice}
+              checked={selected === choice.toLowerCase()}
+              disabled={locked}
+              onChange={() => void choose(choice)}
+            />
+            <span>{choice}</span>
+          </label>
+        ))}
+      </div>
+      <div className="row">
+        <span className={`autosave ${selected !== '' && !saving ? 'saved' : ''}`}>
+          {saving ? 'Saving…' : selected !== '' ? 'Saved on this computer' : 'Not answered yet'}
+        </span>
+        {selected !== '' && !locked ? (
+          <button type="button" className="btn ghost small" onClick={() => void choose('')}>
+            Clear my answer
+          </button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 // ── Written ─────────────────────────────────────────────────────────────────
 
 function WrittenInput({
@@ -240,6 +323,7 @@ function WrittenInput({
           id={`q-${question.questionId}`}
           value={text}
           maxLength={maxChars}
+          rows={question.inputHint === 'short_text' ? 2 : question.inputHint === 'long_text' ? 12 : 6}
           disabled={locked}
           spellCheck={false}
           placeholder={locked ? '' : 'Type your answer here…'}

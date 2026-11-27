@@ -61,6 +61,19 @@ So signing in now wants a **real ShuleSoft student's school code, username and p
 Set `VITE_API_DRIVER=mock` in `.env.local` (or delete the file) to go back to the
 self-contained demo described above.
 
+**Live is two hosts**, and the committed `.env.production` already says so:
+
+| | |
+|---|---|
+| the app | `https://exam.shulesoft.africa` — static `dist/` from this repository |
+| the API | `https://ai.shulesoft.africa/api` — the Laravel app, the same host the parent experience apps already call (`/api/accountant/*`, `/api/jitsi/*`) |
+
+`npm run build` picks `.env.production` up on its own, so a deployment build needs no
+flags. On this machine a git-ignored `.env.production.local` overrides it back to
+`http://localhost/shulesoft_newversion/api`, which is what makes `npm run preview` on
+:4173 a real test of the offline path; move that file aside to build for deployment from
+here.
+
 [`backend-proposal/`](backend-proposal/README.md) is the reference copy of the Laravel side
 and lists every file that was touched there, the four migrations that were run, and what was
 verified against the real database. The wire format is written out in
@@ -73,7 +86,7 @@ verified against the real database. The wire format is written out in
 | `npm run dev` | dev server on :5180 (no service worker) |
 | `npm run build` | typecheck + production build + service worker |
 | `npm run preview` | serve the build on :4173 — use this to test offline |
-| `npm test` | the suite (88 tests) |
+| `npm test` | the suite (92 tests) |
 | `npm run test:watch` | watch mode |
 | `npm run typecheck` | `tsc` only |
 | `node scripts/make-icons.mjs` | regenerate the PWA icons |
@@ -128,7 +141,7 @@ unsent, and the Sync screen drains every scope, not just the signed-in one.
 npm test
 ```
 
-88 tests, no mocking of the core: Dexie runs against `fake-indexeddb`, and the integration
+92 tests, no mocking of the core: Dexie runs against `fake-indexeddb`, and the integration
 tests drive the real `ExamService` against the mock backend.
 
 * `core/timer/examTimer.test.ts` — counting, crash/power-cut recovery, clock tampering, expiry, integrity reporting
@@ -138,6 +151,10 @@ tests drive the real `ExamService` against the mock backend.
 * `core/exam/submission.test.ts` — payload determinism, checksums, attachment manifest, structured grouping
 * `core/examMerge.test.ts` — which state a student sees, and what they may start
 * `core/util/backoff.test.ts` — retry policy, SHA-256 vectors, canonical JSON, key derivation
+* `core/api/laravel.test.ts` — the real driver against the real wire format: the bundle
+  checksum is reproduced from the response as sent (pinned to the PHP implementation by a
+  shared digest), a tampered question is refused, `input_hint` is mapped, the idempotency
+  key is sent
 * `test/labFlow.test.ts` — the lab day end to end, including a power cut mid-exam
 
 ## Deploying to `exam.shulesoft.africa`
@@ -154,8 +171,11 @@ tests drive the real `ExamService` against the mock backend.
    ```
 4. Never cache `index.html` or `sw.js` (`Cache-Control: no-cache`); the hashed assets under
    `/assets/` can be cached for a year.
-5. Add the origin to the API's CORS config, with `Idempotency-Key` in `allowed_headers` —
-   see [`backend-proposal/README.md`](backend-proposal/README.md).
+5. The API is `https://ai.shulesoft.africa` (already in `.env.production`), so this app's
+   origin has to be in that host's CORS allow-list with `Idempotency-Key` in
+   `allowed_headers`. `config/cors.php` there lists `https://exam.shulesoft.africa`
+   already; a different hostname goes in `CORS_ALLOWED_ORIGINS` in the API's `.env` as a
+   comma-separated list. See [`backend-proposal/README.md`](backend-proposal/README.md).
 6. On each lab machine: open the app once while online, sign in, and let it install. Use the
    same browser profile for every shift — the exam data lives in that profile.
 

@@ -108,6 +108,7 @@ function question(partial: Partial<Question> & { questionId: number; number: str
     maxChars: 4000,
     groupRef: null,
     partLabel: null,
+    inputHint: null,
     ...partial,
   };
 }
